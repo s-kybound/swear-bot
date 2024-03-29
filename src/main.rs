@@ -259,7 +259,7 @@ async fn run() {
     pretty_env_logger::init();
     log::info!("Starting profanity bot...");
 
-    let bot = Bot::from_env();
+    let bot = Bot::new("6991827348:AAGx4Q3lr2jW5ycjSKFshdVtTNN41mr6pW4");
     let db: Arc<Mutex<Connection>> = Arc::new(Mutex::new(Connection::open(DATABASE).unwrap()));
     db.lock().unwrap().execute("
     CREATE TABLE IF NOT EXISTS swearers (
