@@ -1,7 +1,14 @@
-use teloxide::{prelude::*, utils::command::BotCommands};
+use std::sync::{Arc, Mutex};
+use rusqlite::{params, Connection, Result};
+use teloxide::{
+    prelude::*,
+    utils::command::BotCommands,
+};
 use rustrict::CensorStr;
 
 mod messages;
+
+const DATABASE: &str = "./src/database.db";
 
 // define commands
 #[derive(BotCommands, Clone)]
@@ -17,10 +24,6 @@ enum Command {
     Leaderboard,
     #[command(description = "show the swear statistics for a user in the chat")]
     Expose(String),
-    #[command(description = "turn the messages off but continue tracking swears")]
-    Stfu,
-    #[command(description = "turn the messages back on")]
-    Sorry,
 }
 
 fn is_username(str: &str) -> bool {
@@ -32,7 +35,8 @@ fn is_username(str: &str) -> bool {
 async fn handle_commands(
     bot: Bot,
     msg: Message,
-    cmd: Command
+    db: Arc<Mutex<Connection>>,
+    cmd: Command,
 ) -> Result<(), teloxide::RequestError> {
     let text = match cmd {
         Command::Blame(str) => {
@@ -47,6 +51,7 @@ async fn handle_commands(
                 let naughty_user = str.trim_start_matches('@').to_string();
                 // check if the user exists in the group
                 // if not, return an error message
+
                 messages::make_blame_swear_message(blamer, naughty_user)
             }
         },
@@ -70,12 +75,6 @@ async fn handle_commands(
                 "TODO".to_string()
             }
         },
-        Command::Stfu => {
-            "sowwy".to_string()
-        },
-        Command::Sorry => {
-            "apology accepted".to_string()
-        }
     };
 
     bot.send_message(msg.chat.id, text).await?;
@@ -83,7 +82,7 @@ async fn handle_commands(
     Ok(())
 }
 
-async fn handle_message(bot: Bot, msg: Message) -> ResponseResult<()> {
+async fn handle_message(bot: Bot, msg: Message, db: Arc<Mutex<Connection>>) -> ResponseResult<()> {
     eprintln!("Handling message: {:?}", msg);
     // get text from the message
     let text = match msg.text() {
@@ -107,11 +106,7 @@ async fn handle_message(bot: Bot, msg: Message) -> ResponseResult<()> {
         if chat.is_group() || chat.is_supergroup() {
             // get the chat id
             let chat_id = chat.id;
-            // look for our saved leaderboard
-
-            // update the leaderboard (use a mutex here)
-
-            // save the leaderboard (use a mutex here)
+            // update the database
         }
 
         // get the naughty user
@@ -134,7 +129,6 @@ async fn handle_test_message(bot: Bot, msg: Message) -> ResponseResult<()> {
         // for example when a user sends a photo
         // or when the bot is added
         None => return Ok(()),
-    
     };
 
     // check for profanity
@@ -158,10 +152,9 @@ async fn main() {
     // load all stored singlish words from a saved text file "singlish.in"
     // and add them to the censor
     {
-        use rustrict::{add_word, CensorStr, Type};
+        use rustrict::{add_word, Type};
         use std::fs::File;
         use std::io::{self, BufRead};
-        use std::path::Path;
 
         eprintln!("Adding singlish words to the censor...");
         // find the singlish file
@@ -195,7 +188,14 @@ async fn run() {
     log::info!("Starting profanity bot...");
 
     let bot = Bot::from_env();
-
+    let db: Arc<Mutex<Connection>> = Arc::new(Mutex::new(Connection::open(DATABASE).unwrap()));
+    db.lock().unwrap().execute("
+    CREATE TABLE IF NOT EXISTS swearers (
+        id INTEGER PRIMARY KEY,
+        user TEXT NOT NULL,
+        chat_id INTEGER NOT NULL,
+        swear_count INTEGER NOT NULL
+    )", ()).unwrap();
     // set up the dispatcher
     Dispatcher::builder(
         bot,
@@ -214,6 +214,7 @@ async fn run() {
                 dptree::filter(|_msg: Message| true)
                     .endpoint(handle_test_message))
     )
+    .dependencies(dptree::deps![db])
     .enable_ctrlc_handler()
     .build()
     .dispatch()
