@@ -8,7 +8,7 @@ async fn main() {
     pretty_env_logger::init();
     log::info!("Starting throw dice bot...");
 
-    let bot = Bot::new("6991827348:AAFtuaiN2g7HNieh0ZuTAzpDmLglMy3Ok0g");
+    let bot = Bot::new("YOUR_BOT_TOKEN");
 
     teloxide::repl(bot, |bot: Bot, msg: Message| async move {
         // check whether the message is inappropriate
