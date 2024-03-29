@@ -61,10 +61,10 @@ pub fn cost_fun_fact(cost: f64) -> String {
     };
 
     match rng2.gen_range(0..4) {
-        0 => format!("did you know that ${:.2} is equivalent to {} of {}?", cost, cost / item_cost, item),
-        1 => format!("${:.2} is the cost of {} of {}!", cost, cost / item_cost, item),
-        2 => format!("you could buy {} of {} with ${:.2}!", cost / item_cost, item, cost),
-        3 => format!("${:.2} is the cost of {} of {}! wow!", cost, cost / item_cost, item),
+        0 => format!("did you know that ${:.2} is equivalent to {:.5} of {}?", cost, cost / item_cost, item),
+        1 => format!("${:.2} is the cost of {:.5} of {}!", cost, cost / item_cost, item),
+        2 => format!("you could buy {:.5} of {} with ${:.2}!", cost / item_cost, item, cost),
+        3 => format!("${:.2} is the cost of {:.5} of {}! wow!", cost, cost / item_cost, item),
         _ => panic!("rng generated another number i did not expect")
     }
 }
