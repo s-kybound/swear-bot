@@ -13,6 +13,14 @@ enum Command {
     About,
     #[command(description = "blame a user for swearing")]
     Blame(String),
+    #[command(description = "show the swear leaderboard")]
+    Leaderboard,
+    #[command(description = "show the swear statistics for a user in the chat")]
+    Expose(String),
+    #[command(description = "turn the messages off but continue tracking swears")]
+    Stfu,
+    #[command(description = "turn the messages back on")]
+    Sorry,
 }
 
 fn is_username(str: &str) -> bool {
@@ -35,7 +43,7 @@ async fn handle_commands(
                 "<username> should start with @".to_string()
             } else {
                 // get the user who blamed someone
-                let blamer = msg.from().unwrap().username.clone().unwrap_or("someone".to_string());
+                let blamer = msg.from().unwrap().username.clone().unwrap_or(msg.from().unwrap().first_name.clone());
                 let naughty_user = str.trim_start_matches('@').to_string();
                 // check if the user exists in the group
                 // if not, return an error message
@@ -48,6 +56,26 @@ async fn handle_commands(
         This bot detects inappropriate language in group chats and shames the user who used it.\n \
         TODO: automatic paylah payment request on swear, swear leadership boards, statistics on most commonly used swear words per user"
         .to_string(),
+        Command::Leaderboard => {
+            "TODO".to_string()
+        },
+        Command::Expose(user) => {
+            // ensure user is not empty
+            if user.trim().is_empty() {
+                "USAGE: /expose <username>".to_string()
+            } else if !is_username(&user) {
+                "<username> should start with @".to_string()
+            } else {
+                // get the statistics for the user
+                "TODO".to_string()
+            }
+        },
+        Command::Stfu => {
+            "sowwy".to_string()
+        },
+        Command::Sorry => {
+            "apology accepted".to_string()
+        }
     };
 
     bot.send_message(msg.chat.id, text).await?;
@@ -71,6 +99,20 @@ async fn handle_message(bot: Bot, msg: Message) -> ResponseResult<()> {
 
     if inappropriate {
         // send a message when inappropriate language is detected
+
+        // get the chat
+        let chat = msg.chat.clone();
+
+        // check if the chat is a group
+        if chat.is_group() || chat.is_supergroup() {
+            // get the chat id
+            let chat_id = chat.id;
+            // look for our saved leaderboard
+
+            // update the leaderboard (use a mutex here)
+
+            // save the leaderboard (use a mutex here)
+        }
 
         // get the naughty user
         let naughty_user = msg.from().unwrap().username.clone().unwrap_or("someone".to_string());
