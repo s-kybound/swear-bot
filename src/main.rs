@@ -9,7 +9,7 @@ enum Command {
     Help,
     #[command(description = "about the bot")]
     About,
-    #[command(description = "blame a user")]
+    #[command(description = "blame a user for swearing")]
     Blame(String),
 }
 
@@ -34,6 +34,9 @@ async fn handle_commands(
             } else {
                 // get the user who blamed someone
                 let blamer = msg.from().unwrap().username.clone().unwrap_or("someone".to_string());
+                
+                // check if the user exists in the group
+                // if not, return an error message
                 format!("@{} says that {} said a BAD WORD!", blamer, str)
             }
         },
@@ -41,7 +44,7 @@ async fn handle_commands(
         Command::About => "---kyriel-swear-bot v0.0.1-beta-prelease4-testing---\n \
         Repository: https://github.com/s-kybound/swear-bot\n \
         This bot detects inappropriate language in group chats and shames the user who used it.\n \
-        TODO: Automatic paylah payment request on swear, swear leadership boards, statistics on most commonly used swear words per user"
+        TODO: Singlish detection, automatic paylah payment request on swear, swear leadership boards, statistics on most commonly used swear words per user"
         .to_string(),
     };
 
@@ -52,7 +55,13 @@ async fn handle_commands(
 
 async fn handle_message(bot: Bot, msg: Message) -> ResponseResult<()> {
     // get text from the message
-    let text = msg.text().unwrap();
+    let text = match msg.text() {
+        Some(text) => text,
+        // this handles the case where the message is not text
+        // for example when a user sends a photo
+        // or when the bot is added
+        None => return Ok(()),
+    };
 
     // check for profanity
     let inappropriate: bool = text.is_inappropriate();
@@ -72,7 +81,14 @@ async fn handle_message(bot: Bot, msg: Message) -> ResponseResult<()> {
 
 async fn handle_test_message(bot: Bot, msg: Message) -> ResponseResult<()> {
     // get text from the message
-    let text = msg.text().unwrap();
+    let text = match msg.text() {
+        Some(text) => text,
+        // this handles the case where the message is not text
+        // for example when a user sends a photo
+        // or when the bot is added
+        None => return Ok(()),
+    
+    };
 
     // check for profanity
     let inappropriate: bool = text.is_inappropriate();
@@ -92,6 +108,36 @@ async fn handle_test_message(bot: Bot, msg: Message) -> ResponseResult<()> {
 async fn main() {
     // before starting, we add singlish swear words to the censor
 
+    // load all stored singlish words from a saved text file "singlish.in"
+    // and add them to the censor
+    {
+        use rustrict::{add_word, CensorStr, Type};
+        use std::fs::File;
+        use std::io::{self, BufRead};
+        use std::path::Path;
+
+        eprintln!("Adding singlish words to the censor...");
+        // find the singlish file
+        let singlish_file = File::open("./src/singlish.in").unwrap();
+        let reader = io::BufReader::new(singlish_file);
+
+        for line in reader.lines() {
+            match line {
+                Ok(line) => {
+                    if line.is_empty() {
+                        continue;
+                    }
+                    eprintln!("Adding word: {}", line);
+                    unsafe {
+                        add_word(&line, Type::INAPPROPRIATE);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error reading line: {}", e);
+                }
+            }
+        }
+    }
 
     run().await;
 }
@@ -108,18 +154,18 @@ async fn run() {
         bot,
         Update::filter_message()
             .branch(
-                // for case where context is not in group
-                dptree::filter(|msg: Message| !(msg.chat.is_group() || msg.chat.is_supergroup()))
-                    .endpoint(handle_test_message))
+            // for commands
+            dptree::entry()
+                .filter_command::<Command>()
+                .endpoint(handle_commands))
             .branch(
-                // for commands
-                dptree::entry()
-                    .filter_command::<Command>()
-                    .endpoint(handle_commands))
+                // for case where context is in group
+                dptree::filter(|msg: Message| msg.chat.is_group() || msg.chat.is_supergroup())
+                    .endpoint(handle_message))
             .branch(
                 // for everything else
                 dptree::filter(|_msg: Message| true)
-                    .endpoint(handle_message))
+                    .endpoint(handle_test_message))
     )
     .enable_ctrlc_handler()
     .build()
