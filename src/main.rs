@@ -1,6 +1,8 @@
 use teloxide::{prelude::*, utils::command::BotCommands};
 use rustrict::CensorStr;
 
+mod messages;
+
 // define commands
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase", description = "These commands are supported:")]
@@ -34,17 +36,17 @@ async fn handle_commands(
             } else {
                 // get the user who blamed someone
                 let blamer = msg.from().unwrap().username.clone().unwrap_or("someone".to_string());
-                
+                let naughty_user = str.trim_start_matches('@').to_string();
                 // check if the user exists in the group
                 // if not, return an error message
-                format!("@{} says that {} said a BAD WORD!", blamer, str)
+                messages::make_blame_swear_message(blamer, naughty_user)
             }
         },
         Command::Help => Command::descriptions().to_string(),
-        Command::About => "---kyriel-swear-bot v0.0.1-beta-prelease4-testing---\n \
+        Command::About => "---kyriel-swear-bot v0.0.2-beta-prerelease-4-testing---\n \
         Repository: https://github.com/s-kybound/swear-bot\n \
         This bot detects inappropriate language in group chats and shames the user who used it.\n \
-        TODO: Singlish detection, automatic paylah payment request on swear, swear leadership boards, statistics on most commonly used swear words per user"
+        TODO: automatic paylah payment request on swear, swear leadership boards, statistics on most commonly used swear words per user"
         .to_string(),
     };
 
@@ -54,6 +56,7 @@ async fn handle_commands(
 }
 
 async fn handle_message(bot: Bot, msg: Message) -> ResponseResult<()> {
+    eprintln!("Handling message: {:?}", msg);
     // get text from the message
     let text = match msg.text() {
         Some(text) => text,
@@ -72,8 +75,10 @@ async fn handle_message(bot: Bot, msg: Message) -> ResponseResult<()> {
         // get the naughty user
         let naughty_user = msg.from().unwrap().username.clone().unwrap_or("someone".to_string());
 
+        // make a message
+        let message = messages::make_normal_swear_message(naughty_user);
         // flame them
-        bot.send_message(msg.chat.id, format!("@{} said a BAD WORD!", naughty_user)).await?;
+        bot.send_message(msg.chat.id, message).await?;
     }
 
     Ok(())
