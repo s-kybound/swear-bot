@@ -47,12 +47,25 @@ async fn handle_commands(
                 "<username> should start with @".to_string()
             } else {
                 // get the user who blamed someone
-                let blamer = msg.from().unwrap().username.clone().unwrap_or(msg.from().unwrap().first_name.clone());
+                let blamer = msg.from().unwrap().username.clone().unwrap_or(msg.from().unwrap().full_name());
                 let naughty_user = str.trim_start_matches('@').to_string();
+                let mut answer: String;
                 // check if the user exists in the group
-                // if not, return an error message
-
-                messages::make_blame_swear_message(blamer, naughty_user)
+                {
+                    let conn = db.lock().unwrap();
+                    let ChatId(chat_id) = msg.chat.id;
+                    let mut stmt = conn.prepare("SELECT swear_count FROM swearers WHERE username = ? AND chat_id = ?").unwrap();
+                    let mut rows = stmt.query(params![naughty_user, chat_id]).unwrap();
+                    if let Some(row) = rows.next().unwrap() {
+                        // then increment the swear count
+                        let swear_count: i32 = row.get(0).unwrap();
+                        conn.execute("UPDATE swearers SET swear_count = ? WHERE username = ? AND chat_id = ?", params![swear_count + 1, naughty_user, chat_id]).unwrap();
+                        answer = messages::make_blame_swear_message(blamer, naughty_user);
+                    } else {
+                        answer = messages::blamer_is_innocent_message(blamer, naughty_user);
+                    }
+                }
+                answer
             }
         },
         Command::Help => Command::descriptions().to_string(),
@@ -62,7 +75,34 @@ async fn handle_commands(
         TODO: automatic paylah payment request on swear, swear leadership boards, statistics on most commonly used swear words per user"
         .to_string(),
         Command::Leaderboard => {
-            "TODO".to_string()
+            {
+                let conn = db.lock().unwrap();
+                let ChatId(chat_id) = msg.chat.id;
+                let mut stmt = conn.prepare("SELECT username, swear_count FROM swearers WHERE chat_id = ? ORDER BY swear_count DESC LIMIT 15").unwrap();
+                let mut rows = stmt.query(params![chat_id]).unwrap();
+                let mut text = "NAUGHTIEST texters:\n".to_string();
+                let mut i = 1;
+                while let Some(row) = rows.next().unwrap() {
+                    let user: String = row.get(0).unwrap();
+                    let swear_count: i32 = row.get(1).unwrap();
+                    text.push_str(&format!("{}. @{}: {}\n", i, user, swear_count));
+                    i += 1;
+                }
+                // get the worst offender's swear count again
+                let mut stmt = conn.prepare("SELECT username, swear_count FROM swearers WHERE chat_id = ? ORDER BY swear_count DESC LIMIT 1").unwrap();
+                let mut rows = stmt.query(params![chat_id]).unwrap();
+                if let Some(row) = rows.next().unwrap() {
+                    let user: String = row.get(0).unwrap();
+                    let swear_count: i32 = row.get(1).unwrap();
+                    text.push_str(&format!("\nWORST OFFENDER: @{} with {} swears\n", user, swear_count));
+
+                    let actual_cost = swear_count as f64 * 0.1;
+                    text.push_str(format!("total cost: ${:.2}\n", actual_cost).as_str());
+                    text.push_str("FUN FACT:\n");
+                    text.push_str(messages::cost_fun_fact(actual_cost).as_str());
+                }
+                text
+            }
         },
         Command::Expose(user) => {
             // ensure user is not empty
@@ -72,7 +112,19 @@ async fn handle_commands(
                 "<username> should start with @".to_string()
             } else {
                 // get the statistics for the user
-                "TODO".to_string()
+                {
+                    let conn = db.lock().unwrap();
+                    let ChatId(chat_id) = msg.chat.id;
+                    let username = user.trim_start_matches('@');
+                    let mut stmt = conn.prepare("SELECT swear_count FROM swearers WHERE username = ? AND chat_id = ?").unwrap();
+                    let mut rows = stmt.query(params![username, chat_id]).unwrap();
+                    if let Some(row) = rows.next().unwrap() {
+                        let swear_count: i32 = row.get(0).unwrap();
+                        format!("@{} has sworn {} times in this chat", username, swear_count)
+                    } else {
+                        format!("@{} has not sworn in this chat. Good!", username)
+                    }
+                }
             }
         },
     };
@@ -83,7 +135,7 @@ async fn handle_commands(
 }
 
 async fn handle_message(bot: Bot, msg: Message, db: Arc<Mutex<Connection>>) -> ResponseResult<()> {
-    eprintln!("Handling message: {:?}", msg);
+    eprintln!("Handling message: {:?}", msg.text());
     // get text from the message
     let text = match msg.text() {
         Some(text) => text,
@@ -105,12 +157,32 @@ async fn handle_message(bot: Bot, msg: Message, db: Arc<Mutex<Connection>>) -> R
         // check if the chat is a group
         if chat.is_group() || chat.is_supergroup() {
             // get the chat id
-            let chat_id = chat.id;
-            // update the database
+            let ChatId(chat_id) = chat.id;            
+            // get the user id
+            let UserId(user_id) = msg.from().unwrap().id;
+            {
+                // get the database connection
+                let conn = db.lock().unwrap();
+                // check if the user has sworn before
+                let mut stmt = conn.prepare("SELECT swear_count FROM swearers WHERE user = ? AND chat_id = ?").unwrap();
+                let mut rows = stmt.query(params![user_id.to_string(), chat_id]).unwrap();
+
+                // if the user has sworn before
+                if let Some(row) = rows.next().unwrap() {
+                    // get the swear count
+                    let swear_count: i32 = row.get(0).unwrap();
+                    // increment the swear count
+                    conn.execute("UPDATE swearers SET swear_count = ? WHERE user = ? AND chat_id = ?", params![swear_count + 1, user_id.to_string(), chat_id]).unwrap();
+                } else {
+                    // if the user has not sworn before
+                    // insert the user into the database
+                    conn.execute("INSERT INTO swearers (user, username, chat_id, swear_count) VALUES (?, ?, ?, ?)", params![user_id.to_string(), msg.from().unwrap().username.clone().unwrap_or(msg.from().unwrap().full_name()), chat_id, 1]).unwrap();
+                }
+            }
         }
 
         // get the naughty user
-        let naughty_user = msg.from().unwrap().username.clone().unwrap_or("someone".to_string());
+        let naughty_user = msg.from().unwrap().username.clone().unwrap_or(msg.from().unwrap().full_name());
 
         // make a message
         let message = messages::make_normal_swear_message(naughty_user);
@@ -192,7 +264,8 @@ async fn run() {
     db.lock().unwrap().execute("
     CREATE TABLE IF NOT EXISTS swearers (
         id INTEGER PRIMARY KEY,
-        user TEXT NOT NULL,
+        user INTEGER NOT NULL,
+        username TEXT NOT NULL,
         chat_id INTEGER NOT NULL,
         swear_count INTEGER NOT NULL
     )", ()).unwrap();
