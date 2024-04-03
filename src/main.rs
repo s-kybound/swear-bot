@@ -76,7 +76,7 @@ async fn handle_commands(
         Command::About => "---kyriel-swear-bot v0.0.2-beta-prerelease-4-testing---\n \
         Repository: https://github.com/s-kybound/swear-bot\n \
         This bot detects inappropriate language in group chats and shames the user who used it.\n \
-        TODO: automatic paylah payment request on swear, swear leadership boards, statistics on most commonly used swear words per user"
+        TODO: automatic paylah payment request on swear, statistics on most commonly used swear words per user"
         .to_string(),
         Command::Leaderboard => {
             {
