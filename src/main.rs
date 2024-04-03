@@ -1,8 +1,7 @@
 use std::sync::{Arc, Mutex};
 use rusqlite::{params, Connection, Result};
 use teloxide::{
-    prelude::*,
-    utils::command::BotCommands,
+    dispatching::dialogue::GetChatId, prelude::*, utils::command::BotCommands
 };
 use rustrict::CensorStr;
 
@@ -24,6 +23,10 @@ enum Command {
     Leaderboard,
     #[command(description = "show the swear statistics for a user in the chat")]
     Expose(String),
+    #[command(description = "make the bot shut up for the meantime")]
+    Stfu,
+    #[command(description = "make the bot noisy again")]
+    Wakeup
 }
 
 fn is_username(str: &str) -> bool {
@@ -36,6 +39,7 @@ async fn handle_commands(
     bot: Bot,
     msg: Message,
     db: Arc<Mutex<Connection>>,
+    silent: Arc<Mutex<bool>>,
     cmd: Command,
 ) -> Result<(), teloxide::RequestError> {
     let text = match cmd {
@@ -49,7 +53,7 @@ async fn handle_commands(
                 // get the user who blamed someone
                 let blamer = msg.from().unwrap().username.clone().unwrap_or(msg.from().unwrap().full_name());
                 let naughty_user = str.trim_start_matches('@').to_string();
-                let mut answer: String;
+                let answer: String;
                 // check if the user exists in the group
                 {
                     let conn = db.lock().unwrap();
@@ -127,14 +131,28 @@ async fn handle_commands(
                 }
             }
         },
+        Command::Stfu => {
+            {
+                let mut sil = silent.lock().unwrap();
+                *sil = true;
+            }
+            "ok".to_string()
+        },
+        Command::Wakeup => {
+            {
+                let mut sil = silent.lock().unwrap();
+                *sil = true;
+            }
+            "woken up".to_string()
+        }
     };
 
     bot.send_message(msg.chat.id, text).await?;
-
+ 
     Ok(())
 }
 
-async fn handle_message(bot: Bot, msg: Message, db: Arc<Mutex<Connection>>) -> ResponseResult<()> {
+async fn handle_message(bot: Bot, msg: Message, db: Arc<Mutex<Connection>>, silent: Arc<Mutex<bool>>) -> ResponseResult<()> {
     eprintln!("Handling message: {:?}", msg.text());
     // get text from the message
     let text = match msg.text() {
@@ -186,8 +204,16 @@ async fn handle_message(bot: Bot, msg: Message, db: Arc<Mutex<Connection>>) -> R
 
         // make a message
         let message = messages::make_normal_swear_message(naughty_user);
-        // flame them
-        bot.send_message(msg.chat.id, message).await?;
+
+        // get the current silent state
+        let sil: bool;
+        {
+            sil = silent.lock().unwrap().clone();
+        }
+
+        if !sil {
+            bot.send_message(msg.chat.id, message).await?;
+        }
     }
 
     Ok(())
@@ -224,7 +250,7 @@ async fn main() {
     // load all stored singlish words from a saved text file "singlish.in"
     // and add them to the censor
     {
-        use rustrict::{add_word, Type};
+        use rustrict::{Trie, Type};
         use std::fs::File;
         use std::io::{self, BufRead};
 
@@ -241,7 +267,7 @@ async fn main() {
                     }
                     eprintln!("Adding word: {}", line);
                     unsafe {
-                        add_word(&line, Type::INAPPROPRIATE);
+                    Trie::customize_default().set(&line, Type::INAPPROPRIATE);
                     }
                 }
                 Err(e) => {
@@ -259,7 +285,7 @@ async fn run() {
     pretty_env_logger::init();
     log::info!("Starting profanity bot...");
 
-    let bot = Bot::new("6991827348:AAGx4Q3lr2jW5ycjSKFshdVtTNN41mr6pW4");
+    let bot = Bot::from_env();
     let db: Arc<Mutex<Connection>> = Arc::new(Mutex::new(Connection::open(DATABASE).unwrap()));
     db.lock().unwrap().execute("
     CREATE TABLE IF NOT EXISTS swearers (
@@ -270,6 +296,8 @@ async fn run() {
         swear_count INTEGER NOT NULL
     )", ()).unwrap();
     // set up the dispatcher
+    let mut silent_bool = false;
+    let silent = Arc::new(Mutex::new(silent_bool));
     Dispatcher::builder(
         bot,
         Update::filter_message()
@@ -287,7 +315,7 @@ async fn run() {
                 dptree::filter(|_msg: Message| true)
                     .endpoint(handle_test_message))
     )
-    .dependencies(dptree::deps![db])
+    .dependencies(dptree::deps![db, silent])
     .enable_ctrlc_handler()
     .build()
     .dispatch()

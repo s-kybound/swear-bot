@@ -56,7 +56,7 @@ pub fn cost_fun_fact(cost: f64) -> String {
         10 => ("rc4 summer stay".to_string(), 1800.00),
         11 => ("bus from nus to ntu".to_string(), 2.50),
         12 => ("hwangs galbitang".to_string(), 7.00),
-        13 => ("singular dodgeball (according to karthik)".to_string(), 20.00),
+        13 => ("singular dodgeball".to_string(), 20.00),
         _ => panic!("rng generated another number i did not expect")
     };
 
